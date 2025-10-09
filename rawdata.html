@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+    <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-L9R9EKK20K"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-L9R9EKK20K');
+  </script>
+  <title>STARS Fleet - Raw Data</title>
+  <!-- DataTables CSS/JS -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css"/>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #fafbfc;}
+    #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
+    #navbar a {
+      color: #fff; text-decoration: none; margin-right: 18px; font-weight: 600; font-size: 1.1em; padding: 6px 12px;
+      border-radius: 6px; transition: background 0.2s;
+    }
+    #navbar a:hover, #navbar a.active { background: #2362a1; }
+    #container { max-width: 1280px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001;}
+    h1 { font-weight: 700; }
+    table { width: 100%; }
+    .loading-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.85);
+      z-index: 10010;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5em;
+      transition: opacity 0.3s;
+    }
+    .propeller {
+      margin-bottom: 16px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 8px solid #ccc;
+      border-top: 8px solid #164778;
+      border-right: 8px solid #46bcec;
+      border-bottom: 8px solid #ffcb05;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg);}
+    }
+    /* Filter menu styles */
+    .multi-filter-menu {
+        font-size: 13px;
+        z-index: 99999 !important;  /* Super high to ensure on top */
+        box-shadow: 0 2px 10px #0002;
+    }
+    th {
+        position: relative !important;
+        overflow: visible !important; /* Make sure dropdowns aren't hidden */
+    }
+    .dataTables_scrollBody {
+        overflow: visible !important;
+    }
+  </style>
+</head>
+<body>
+  <nav id="navbar">
+    <a href="index.html">Dashboard</a>
+    <a href="map.html">Wifi Map</a>
+    <a href="visualizer.html">Cell Map</a>
+    <a href="rawdata.html" class="active">Raw Data</a>
+  </nav>
+  <div id="container">
+    <h1>STARS Fleet - Raw Data</h1>
+    <div id="loadingOverlay" class="loading-overlay" style="display:flex;">
+      <div class="propeller"></div>
+      Loading data...
+    </div>
+    <table id="rawdatatable" class="display"></table>
+  </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('#navbar a').forEach(a=>{
+    if(a.href.endsWith(location.pathname.split('/').pop())) a.classList.add('active');
+  });
+
+  function getHiddenColsIndex(headers, toHide) {
+    return headers.map(h=>h.trim().toLowerCase()).map((h, idx) => toHide.includes(h) ? idx : -1).filter(idx => idx >= 0);
+  }
+  function fmtCoord(val) {
+    let f = parseFloat(val);
+    if (isNaN(f)) return val;
+    return f.toFixed(2);
+  }
+
+  // Show the loading overlay
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  if (loadingOverlay) loadingOverlay.style.display = 'flex';
+
+  fetch('data/master_results.csv')
+    .then(resp=>resp.text())
+    .then(csv=>{
+      let lines = csv.trim().split('\n');
+      let headers = lines[0].split(',');
+      let hide = ['unit','posntype','region'];
+      let hideIdx = getHiddenColsIndex(headers, hide);
+      let latIdx = headers.findIndex(h => h.trim().toLowerCase() === 'latitude');
+      let lonIdx = headers.findIndex(h => h.trim().toLowerCase() === 'longitude');
+
+      // Build visibleHeaders array
+      let visibleHeaders = [];
+      let origToVisibleColIdx = [];
+      let visibleToOrigColIdx = [];
+      headers.forEach((h, i) => {
+        if (!hideIdx.includes(i)) {
+          visibleHeaders.push(h.trim());
+          origToVisibleColIdx[i] = visibleHeaders.length - 1;
+          visibleToOrigColIdx.push(i);
+        } else {
+          origToVisibleColIdx[i] = -1;
+        }
+      });
+
+      let filterCols = ['geoname','callsign','data'];
+      let filterVisibleIdx = visibleHeaders.map((h, i) => filterCols.includes(h.trim().toLowerCase()) ? i : -1).filter(i => i !== -1);
+
+      // Clean lines
+      let cleanLines = [lines[0]];
+      for (let i = 1; i < lines.length; ++i) {
+        let cols = lines[i].split(',');
+        // Fix length: pad or truncate to match header count
+        if (cols.length < headers.length) {
+          while (cols.length < headers.length) cols.push('');
+        } else if (cols.length > headers.length) {
+          cols = cols.slice(0, headers.length);
+        }
+        // skip if all columns are empty or just dashes
+        if (cols.every(val => !val.trim() || val.trim() === "--------")) continue;
+        cleanLines.push(cols.join(','));
+      }
+
+      let thead = '<thead><tr>';
+      visibleHeaders.forEach(h => thead += `<th>${h}</th>`);
+      thead += '</tr></thead><tbody>';
+      let tbody = '';
+      for(let i=1; i<cleanLines.length; ++i) {
+        let cols = cleanLines[i].split(',');
+        tbody += '<tr>';
+        visibleToOrigColIdx.forEach((origColIdx,vi)=>{
+          let d = cols[origColIdx] || '';
+          if (origColIdx === latIdx || origColIdx === lonIdx) {
+            tbody += `<td>${fmtCoord(d)}</td>`;
+          } else {
+            tbody += `<td>${d}</td>`;
+          }
+        });
+        tbody += '</tr>';
+      }
+      tbody += '</tbody>';
+      document.getElementById('rawdatatable').innerHTML = thead + tbody;
+
+      // Floating dropdown logic with perfect outside-click close
+      let table = $('#rawdatatable').DataTable({
+        order: [],
+        pageLength: 50,
+        dom: 'Bfrtip',
+        scrollX: true,
+        deferRender: true,         // <--- this line makes table load faster for big data
+        initComplete: function() {
+          if (loadingOverlay) loadingOverlay.style.display = 'none'; // Hide loading overlay
+
+          let api = this.api();
+          let openMenu = null;
+
+          filterVisibleIdx.forEach(colIdx => {
+            let col = api.column(colIdx);
+            let header = $(col.header());
+            header.css('position', 'relative');
+            header.find('.filterbtn').remove();
+
+            // Build unique values (except blank)
+            let valuesRaw = col.data().unique().toArray().filter(v =>
+                v &&
+                v !== "--------" &&
+                v.toLowerCase() !== "no data" &&
+                v.toLowerCase() !== "null"
+            );
+            let values = [];
+            let offloadedFound = false;
+            valuesRaw.forEach(v => {
+            if (/^Offloaded/i.test(v)) {
+                if (!offloadedFound) {
+                values.push("Offloaded …");
+                offloadedFound = true;
+                }
+            } else {
+                values.push(v);
+            }
+            });
+            values = values.sort((a, b) => {
+            // Always put "Offloaded …" at the end
+            if (a === "Offloaded …") return 1;
+            if (b === "Offloaded …") return -1;
+            return a.localeCompare(b);
+            });
+
+
+            // Add the filter button
+            let btn = $(`<button class="filterbtn" style="margin-left:6px; font-size:13px; padding:2px 7px;">&#x25BC;</button>`);
+            header.append(btn);
+
+            // Create the floating menu but attach to body, not header
+            let menu = $(`
+              <div class="multi-filter-menu" style="display:none; position:absolute; z-index:999999; background:#fff; box-shadow:0 2px 10px #0002; padding:8px 14px; border-radius:8px; min-width:180px;">
+                <label><input type="checkbox" class="allchk" checked> <b>All</b></label><br/>
+                ${values.map(v=>`<label><input type="checkbox" class="vchk" value="${v.replace(/"/g, '&quot;')}" checked> ${v}</label><br/>`).join('')}
+              </div>
+            `);
+            $('body').append(menu);
+
+            // Show/hide and position the menu on button click
+            btn.on('click', function(e){
+              e.stopPropagation();
+              $('.multi-filter-menu').hide();
+              openMenu = menu[0];
+              let th = header[0];
+              let rect = th.getBoundingClientRect();
+              menu.css({
+                display: 'block',
+                top: rect.bottom + window.scrollY + 'px',
+                left: rect.left + window.scrollX + 'px',
+              });
+            });
+
+            // Only close if click is *outside* the menu and *not* the filter button
+            document.addEventListener('mousedown', function(event) {
+              if (!openMenu) return;
+              if (
+                !openMenu.contains(event.target) &&
+                !event.target.classList.contains('filterbtn')
+              ) {
+                $(openMenu).hide();
+                openMenu = null;
+              }
+            });
+
+            // Hide on scroll/resize (optional)
+            window.addEventListener('scroll', function() {
+              if (openMenu) { $(openMenu).hide(); openMenu = null; }
+            });
+            window.addEventListener('resize', function() {
+              if (openMenu) { $(openMenu).hide(); openMenu = null; }
+            });
+
+            // Do not close when interacting with the menu (checkboxes, labels)
+            menu.on('mousedown', e => e.stopPropagation());
+
+            // Handle "All" checkbox
+            menu.find('.allchk').on('change', function(){
+              let checked = this.checked;
+              menu.find('.vchk').prop('checked', checked);
+              doFilter();
+            });
+            // Handle value checkboxes
+            menu.find('.vchk').on('change', function(){
+              let allChecked = menu.find('.vchk:not(:checked)').length === 0;
+              menu.find('.allchk').prop('checked', allChecked);
+              doFilter();
+            });
+
+            function doFilter() {
+                let vals = menu.find('.vchk:checked').map(function(){
+                    let v = $(this).val();
+                    if (v === "Offloaded …") {
+                    return '^Offloaded'; // Regex: match all that start with Offloaded
+                    } else {
+                    return '^'+$.fn.dataTable.util.escapeRegex(v)+'$';
+                    }
+                }).get();
+                col.search(vals.length === values.length ? '' : vals.join('|'), true, false).draw();
+                }
+          });
+        }
+      });
+
+      // Style for the floating menu and button
+      $('<style>')
+        .prop('type', 'text/css')
+        .html(`
+          .multi-filter-menu { font-size: 13px; z-index:999999 !important; }
+          .multi-filter-menu label { display:block; margin-bottom:2px; }
+          .filterbtn { background: #ececec; border: 1px solid #aaa; border-radius:4px; cursor:pointer; }
+          .filterbtn:focus { outline: none; border-color:#3272e3; }
+        `)
+        .appendTo('head');
+    });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-L9R9EKK20K"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-L9R9EKK20K');
+  </script>
+  <title>STARS Fleet - Cellular Visualizer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #fafbfc;}
+    #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
+    #navbar a {
+      color: #fff; text-decoration: none; margin-right: 18px; font-weight: 600; font-size: 1.1em; padding: 6px 12px;
+      border-radius: 6px; transition: background 0.2s;
+    }
+    #navbar a:hover, #navbar a.active { background: #2362a1; }
+    #container { max-width: 1380px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001;}
+    h1 { font-weight: 700; display:flex; align-items:center; gap:8px;}
+    #datefilter { margin: 10px 0 16px 0; display: flex; gap: 18px; align-items: center; flex-wrap: wrap;}
+    #datefilter label { font-weight: 600;}
+    #callsignDropdown { position: relative; display: inline-block;}
+    #callsignBtn {
+      background: #fff; border: 1px solid #aaa; border-radius: 6px; font-size: 1em; padding: 5px 14px;
+      min-width: 150px; cursor: pointer; text-align: left;
+    }
+    #callsignMenu {
+      display: none; position: absolute; left: 0; top: 110%;
+      background: #fff; border: 1px solid #aaa; border-radius: 8px; box-shadow: 0 2px 12px #0002;
+      z-index: 1000; padding: 10px 0; min-width: 220px;
+      max-height: 320px; overflow-y: auto;
+      transition: opacity 0.15s;
+    }
+    #callsignMenu label {
+      display: block; padding: 4px 18px; font-size: 1em; cursor: pointer;
+      user-select: none;
+    }
+    #callsignMenu label:hover { background: #f0f7ff; }
+    #map { width: 100%; height: 500px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 32px; }
+    .flexrow { display: flex; gap: 32px; }
+    .flexrow > div { flex: 1; }
+    .pie-marker { background: none !important; border: none !important; }
+    #netFixBox { margin-left: auto; display: flex; align-items: center; gap: 7px;}
+    .info-icon {
+      font-family: Arial,sans-serif; display: inline-block; border-radius: 50%; border: 1.5px solid #164778; width: 19px; height: 19px; text-align: center; font-size: 13px;
+      font-weight: bold; color: #164778; cursor: pointer; background: #fff; line-height: 17px; position: relative;
+    }
+    .info-tooltip {
+      display: none;
+      position: absolute;
+      z-index: 9999;
+      top: 28px; left: -130px; min-width: 310px;
+      background: #fff; color: #222; border: 1.2px solid #164778;
+      border-radius: 7px; box-shadow: 0 2px 8px #0002;
+      font-size: 0.98em; padding: 12px 15px; pointer-events: none;
+    }
+    #locationDropdown { position: relative; display: inline-block; }
+    #locationBtn {
+      background: #fff; border: 1px solid #aaa; border-radius: 6px; font-size: 1em; padding: 5px 14px;
+      min-width: 150px; cursor: pointer; text-align: left;
+    }
+    #locationMenu {
+      display: none; position: absolute; left: 0; top: 110%;
+      background: #fff; border: 1px solid #aaa; border-radius: 8px; box-shadow: 0 2px 12px #0002;
+      z-index: 1000; padding: 10px 0; min-width: 220px;
+      max-height: 320px; overflow-y: auto;
+      transition: opacity 0.15s;
+    }
+    #locationMenu label {
+      display: block; padding: 4px 18px; font-size: 1em; cursor: pointer;
+      user-select: none;
+    }
+    #locationMenu label:hover { background: #f0f7ff; }
+
+    .info-icon:hover .info-tooltip,
+    .info-icon:focus .info-tooltip { display: block; pointer-events: auto;}
+    .chart-header { display:flex; align-items:center; gap:10px; justify-content: space-between; flex-wrap: wrap;}
+    .sort-wrap { display:flex; align-items:center; gap:6px; font-size: 0.95em;}
+    select.sort { border:1px solid #aaa; border-radius:6px; padding:4px 8px; background:#fff; }
+    @media (max-width: 950px) {
+      .flexrow { flex-direction: column;}
+      #container { padding: 12px 3vw;}
+    }
+  </style>
+</head>
+<body>
+  <nav id="navbar">
+    <a href="index.html">Dashboard</a>
+    <a href="map.html">Wifi Map</a>
+    <a href="visualizer.html" class="active">Cell Map</a>
+    <a href="rawdata.html">Raw Data</a>
+  </nav>
+
+  <div id="container">
+    <h1>
+      STARS FLEET CELLULAR MAP
+      <span class="info-icon" tabindex="0">i
+        <span class="info-tooltip">
+          Fleet registrations: GCPH, FKCM, FCLI, GLLS, GKLY, FMBQ, GFRG, FNPT, GWRC, GDRP, FIFP, FLNK. Palantir device SSID: SKYTRAC_DAL-200. Registration mapping placeholder until updated.
+        </span>
+      </span>
+    </h1>
+    <div id="datefilter">
+      <label for="startDate">Start date:</label>
+      <input type="date" id="startDate">
+      <label for="endDate">End date:</label>
+      <input type="date" id="endDate">
+      <button id="resetDates">Show All</button>
+      <div id="callsignDropdown">
+        <button id="callsignBtn" type="button">All Callsigns ▼</button>
+        <div id="callsignMenu"></div>
+      </div>
+      <label for="modFilter">Configuration:</label>
+      <select id="modFilter">
+        <option value="ALL" selected>All</option>
+        <option value="MOD_E">Placeholder Group (update pending)</option>
+        <option value="NON_MOD">Remaining Fleet</option>
+      </select>
+
+      <label for="simFilter">SIM Group:</label>
+      <select id="simFilter">
+        <option value="ALL" selected>All</option>
+        <option value="TELUS">Primary (placeholder)</option>
+        <option value="GIGSKY">Secondary (placeholder)</option>
+      </select>
+      <div id="locationDropdown">
+        <button id="locationBtn" type="button">All Locations ▼</button>
+        <div id="locationMenu"></div>
+      </div>
+      <div id="netFixBox">
+        <input type="checkbox" id="includeNetFix" style="transform: scale(1.18);" checked>
+        <label for="includeNetFix" style="font-weight:600;cursor:pointer;">Include Net Connected</label>
+        <span class="info-icon" tabindex="0">i
+          <span class="info-tooltip">
+            Including net connected data gives a better indication of internet availability in a location. The cellular status indication is sent once on engine off, and once on engine on events. By clicking 'include net connected' this checks for a net connected event for up to 3 minutes after a cell status 0 report to check if the unit was able to connect shortly after.
+          </span>
+        </span>
+      </div>
+    </div>
+    <div id="map"></div>
+
+    <div class="flexrow">
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Cell status by City</h3>
+          <div class="sort-wrap">
+            <label for="geonameSort">Sort:</label>
+            <select id="geonameSort" class="sort">
+              <option value="total_desc">High→Low (total)</option>
+              <option value="nocell_desc">High→Low (No Cell)</option>
+              <option value="hascell_desc">High→Low (Has Cell)</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="geonameChart"></canvas>
+      </div>
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Cell status by Callsign</h3>
+          <div class="sort-wrap">
+            <label for="callsignSort">Sort:</label>
+            <select id="callsignSort" class="sort">
+              <option value="total_desc">High→Low (total)</option>
+              <option value="nocell_desc">High→Low (No Cell)</option>
+              <option value="hascell_desc">High→Low (Has Cell)</option>
+            </select>
+            <span class="info-icon" tabindex="0">i
+              <span class="info-tooltip">
+                Callsigns with &gt;10% "No Cell" indications should drive maintenance action to investigate DAL200 unit status and antenna coax integrity/connection. Reach out to SKYTRAC Customer Support at support@skytrac.ca to confirm status of cellular plan.
+              </span>
+            </span>
+          </div>
+        </div>
+        <canvas id="callsignChart"></canvas>
+      </div>
+    </div>
+      <div id="google_translate_element"></div>
+
+      <script type="text/javascript">
+        function googleTranslateElementInit() {
+          new google.translate.TranslateElement(
+            {pageLanguage: 'en'},
+            'google_translate_element'
+          );
+        }
+      </script>
+
+    <!-- New charts row -->
+    <div class="flexrow" style="margin-top:28px;">
+      <div>
+        <h3>No Cell % by Day</h3>
+        <canvas id="dailyPctChart"></canvas>
+      </div>
+      <div>
+        <h3>Top 10 Callsigns by No Cell %</h3>
+        <canvas id="callsignPctChart"></canvas>
+      </div>
+    </div>
+
+  <script>
+    // Navbar highlight logic
+    document.querySelectorAll('#navbar a').forEach(a=>{
+      if(a.href.endsWith(location.pathname.split('/').pop())) a.classList.add('active');
+    });
+
+    const status0Label = 'No Cell';
+    const status1Label = 'Has Cell';
+    // STARS registrations and placeholder groupings
+    const STARS_REGISTRATIONS = [
+      'GCPH','FKCM','FCLI','GLLS','GKLY','FMBQ','GFRG','FNPT','GWRC','GDRP','FIFP','FLNK'
+    ];
+    const TELUS_CALLSIGNS = new Set(STARS_REGISTRATIONS); // Placeholder until SIM mapping is confirmed
+    const MOD_E_CALLSIGNS  = new Set(); // Placeholder until configuration mapping is provided
+    const PALANTIR_DEVICE = {
+      ssid: 'SKYTRAC_DAL-200',
+      registrationMappingNote: 'Awaiting registration mapping for SKYTRAC_DAL-200 device'
+    };
+    let currentLocations = ["__ALL__"];
+    function getCallsignVal(row) {
+      return (row.callsign || row.Callsign || "UNKNOWN").toString().trim().toUpperCase();
+    }
+
+    // Date parsing (robust, accepts csv date/time string)
+    function parseCSVDate(dstr) {
+      if (!dstr) return null;
+      let m = dstr.match(/(\d{4})-(\d{2})-(\d{2})[\sT]+(\d{2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+      if (!m) return null;
+      let year = +m[1], mon = +m[2]-1, day = +m[3], hour = +m[4], min = +m[5], sec = +(m[6]||0);
+      let ap = m[7];
+      if (ap) {
+        if (ap.toUpperCase() === "PM" && hour < 12) hour += 12;
+        if (ap.toUpperCase() === "AM" && hour === 12) hour = 0;
+      }
+      return new Date(year, mon, day, hour, min, sec).getTime();
+    }
+
+    // "Net Connected" fix logic (10 min lookahead)
+    function fixCellStatusWithNet(data) {
+      let callsignEvents = {};
+      data.forEach((row, idx) => {
+        let cs = row.Callsign || row.callsign || "";
+        let dval = (row.data || row.Data || "").trim();
+        let date = parseCSVDate(row.PosnDate || row.posndate || row.POSNDATE || "");
+        if (!date) return;
+        if (!callsignEvents[cs]) callsignEvents[cs] = [];
+        if (dval.startsWith("Cell status: 0") || dval.startsWith("Net Connected")) {
+          callsignEvents[cs].push({date, idx, type: dval.startsWith("Cell status: 0") ? "cell0" : "netok"});
+        }
+      });
+      Object.values(callsignEvents).forEach(arr => arr.sort((a, b) => a.date - b.date));
+      let toUpgrade = new Set();
+      Object.entries(callsignEvents).forEach(([cs, arr]) => {
+        for (let i = 0; i < arr.length; ++i) {
+          let ev = arr[i];
+          if (ev.type !== "cell0") continue;
+          for (let j = i + 1; j < arr.length; ++j) {
+            if (arr[j].date - ev.date > 10*60*1000) break;
+            if (arr[j].type === "netok") {
+              toUpgrade.add(ev.idx);
+              break;
+            }
+          }
+        }
+      });
+      return data.map((row, idx) => {
+        if (toUpgrade.has(idx)) {
+          let newRow = {...row};
+          newRow.data = "Cell status: 1";
+          return newRow;
+        }
+        return row;
+      });
+    }
+
+    // Geoname mapping
+    const geonameAliases = {
+      "Montreal/Mirabel Intl": "Mirabel", "Montreal/St-Hubert": "Mirabel", "Montreal/Cartierville": "Montreal",
+      "Montreal/Dorval Intl": "Montreal", "Halifax Intl": "Halifax", "CHC Heliport": "Halifax", "Halifax/Shearwater": "Halifax",
+      "Ottawa/Gatineau": "Ottawa", "Ottawa Int": "Ottawa", "Ottawa/Rockcliffe": "Ottawa", "SGL Hanger (Ottawa)": "Ottawa",
+      "Quebec": "Quebec", "Valcartier": "Quebec", "Sept-Iles": "Sept-Iles", "Wabush": "Wabush", "St Johns": "St Johns",
+      "Deer Lake": "Deer Lake", "Goose Bay": "Goose Bay", "Gander Intl": "Gander Intl", "Bagotville": "Bagotville",
+      "Chicoutimi/St-Honore": "Chicoutimi/St-Honore", "Midland/Huronia": "Midland/Huronia", "Moncton": "Moncton",
+      "Matane": "Matane", "Baie-Comeau": "Matane", "Forestville": "Matane",
+      "Gen Edward Lawrence Logan Intl - Boston": "Boston", "Newark Intl": "Newark", "Stephenville": "Stephenville",
+      "Gaspe": "Gaspe", "Churchill Falls": "Churchill Falls", "Greenwood": "Greenwood", "Trois-Rivieres": "Trois-Rivieres",
+      "Lourdes-de-Blanc-Sablon": "Lourdes-de-Blanc-Sablon", "Nain": "Nain", "Iles-de-la-Madeleine": "Iles-de-la-Madeleine", "Sydney": "Sydney"
+    };
+    
+    function canonicalGeoname(geo) { return geonameAliases[geo] || geo; }
+
+    function parseCSV(csv) {
+      let lines = csv.trim().split('\n');
+      let headers = lines[0].split(',').map(h=>h.trim());
+      return lines.slice(1).map(l => {
+        let d = {}, vals = l.split(',');
+        headers.forEach((h, i) => d[h] = vals[i]);
+        return d;
+      });
+    }
+
+    function pieSVG(count0, count1, radiusPx) {
+      let total = count0 + count1, r = radiusPx;
+      if (total === 0) {
+        return `<svg width="${r*2}" height="${r*2}"><circle cx="${r}" cy="${r}" r="${r}" fill="#eee"/></svg>`;
+      }
+      if (count1 === 0) return `<svg width="${r*2}" height="${r*2}"><circle cx="${r}" cy="${r}" r="${r}" fill="#e83a3a"/></svg>`;
+      if (count0 === 0) return `<svg width="${r*2}" height="${r*2}"><circle cx="${r}" cy="${r}" r="${r}" fill="#1bc541"/></svg>`;
+      let pct1 = count1 / total, angle1 = pct1 * 2 * Math.PI;
+      let x1 = r + r * Math.sin(angle1), y1 = r - r * Math.cos(angle1);
+      let largeArc1 = pct1 > 0.5 ? 1 : 0;
+      let d1 = [`M ${r} ${r}`, `L ${r} 0`, `A ${r} ${r} 0 ${largeArc1} 1 ${x1} ${y1}`, 'Z'].join(' ');
+      let d0 = [`M ${r} ${r}`, `L ${x1} ${y1}`, `A ${r} ${r} 0 ${pct1 < 0.5 ? 1 : 0} 1 ${r} 0`, 'Z'].join(' ');
+      return `<svg width="${r*2}" height="${r*2}"><path d="${d1}" fill="#1bc541"/><path d="${d0}" fill="#e83a3a"/></svg>`;
+    }
+
+    let map, markerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
+        allData = [], currentCallsigns = ["__ALL__"], includeNetFix = false,
+        selectedModFilter = "ALL", selectedSIMFilter = "ALL";
+
+    function sortAgg(keys, agg, mode) {
+      // mode: total_desc | nocell_desc | hascell_desc
+      return keys.sort((a,b)=>{
+        const A0 = agg[a].count0, A1 = agg[a].count1;
+        const B0 = agg[b].count0, B1 = agg[b].count1;
+        if (mode === 'nocell_desc') return (B0 - A0) || (B1 - A1);
+        if (mode === 'hascell_desc') return (B1 - A1) || (B0 - A0);
+        const At = A0 + A1, Bt = B0 + B1;
+        return (Bt - At) || (B0 - A0) || (B1 - A1);
+      });
+    }
+
+    function redraw(filteredData) {
+      if (includeNetFix) filteredData = fixCellStatusWithNet(filteredData);
+      if (markerLayer) { markerLayer.clearLayers(); }
+      else { markerLayer = L.layerGroup().addTo(map); }
+
+      // Aggregate by City for map and chart
+      let geonameGroup = {};
+      filteredData.forEach(row => {
+        let rawGeo = row.geoname || row.Geoname || "Unknown";
+        if(rawGeo === "S7000" || rawGeo === "CGR") return;
+        let speed = parseFloat(row["speed"] || row["Speed"] || "0");
+        if (isNaN(speed) || speed > 1) return;
+        let dataval = (row.data || row.Data || "").trim();
+        if (!dataval.startsWith("Cell status:")) return;
+        let cs = row.callsign || row.Callsign || "Unknown";
+        if(currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return;
+        let geo = canonicalGeoname(rawGeo);
+        if(!geo) return;
+        let lat = parseFloat(row.latitude || row.Latitude);
+        let lon = parseFloat(row.longitude || row.Longitude);
+        if(isNaN(lat)||isNaN(lon)) return;
+        let status0 = dataval === "Cell status: 0" ? 1 : 0;
+        let status1 = dataval === "Cell status: 1" ? 1 : 0;
+        if(!geonameGroup[geo]) {
+          geonameGroup[geo] = {
+            latList: [], lonList: [], count0:0, count1:0, callsigns:{}, rows:[]
+          };
+        }
+        geonameGroup[geo].latList.push(lat);
+        geonameGroup[geo].lonList.push(lon);
+        geonameGroup[geo].count0 += status0;
+        geonameGroup[geo].count1 += status1;
+        if(!geonameGroup[geo].callsigns[cs]) geonameGroup[geo].callsigns[cs] = {count0:0,count1:0};
+        geonameGroup[geo].callsigns[cs].count0 += status0;
+        geonameGroup[geo].callsigns[cs].count1 += status1;
+        geonameGroup[geo].rows.push(row);
+      });
+      Object.entries(geonameGroup).forEach(([geo, val]) => {
+        let n = val.latList.length;
+        let meanLat = val.latList.reduce((a,b)=>a+b,0)/n;
+        let meanLon = val.lonList.reduce((a,b)=>a+b,0)/n;
+        val.lat = meanLat; val.lon = meanLon;
+      });
+      Object.entries(geonameGroup).forEach(([geo, val]) => {
+        let pieIcon = L.divIcon({
+          className: 'pie-marker',
+          iconSize: [36, 36],
+          html: pieSVG(val.count0, val.count1, 18)
+        });
+        let marker = L.marker([val.lat, val.lon], {icon: pieIcon}).addTo(markerLayer);
+        let callsignRows = Object.entries(val.callsigns)
+        .filter(([_,v])=>v.count0>0||v.count1>0)
+        .map(([cs,v])=>`<tr><td>${cs}</td><td>${v.count0}</td><td>${v.count1}</td></tr>`)
+        .join('');
+        if(!callsignRows) callsignRows = "<tr><td colspan='3' style='text-align:center'>None</td></tr>";
+        let html = `<b>${geo}</b><br/>
+        <span style='font-size:13px;'>${status0Label}: <b>${val.count0}</b> &nbsp;&nbsp; ${status1Label}: <b>${val.count1}</b></span><br/>
+        <hr>
+        <b>Breakdown by Callsign:</b><br>
+        <table style='font-size:12px;'><tr><th>Callsign</th><th>${status0Label}</th><th>${status1Label}</th></tr>
+        ${callsignRows}
+        </table>`;
+        marker.bindTooltip(html, {sticky: true});
+      });
+
+      // City chart with sort
+      let geonameKeys = Object.keys(geonameGroup);
+      let modeCity = document.getElementById('geonameSort').value;
+      geonameKeys = sortAgg(geonameKeys, geonameGroup, modeCity);
+      let geonameCounts0 = geonameKeys.map(g=>geonameGroup[g].count0);
+      let geonameCounts1 = geonameKeys.map(g=>geonameGroup[g].count1);
+      if (geonameChart) geonameChart.destroy();
+      geonameChart = new Chart(document.getElementById('geonameChart'), {
+        type: 'bar',
+        data: {
+          labels: geonameKeys,
+          datasets: [
+            {label: status0Label, data: geonameCounts0, backgroundColor: '#e83a3a'},
+            {label: status1Label, data: geonameCounts1, backgroundColor: '#1bc541'}
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {legend: {position:'top'}},
+          scales: {x: {stacked:true}, y:{beginAtZero:true,stacked:true}}
+        }
+      });
+
+      // Callsign chart with sort
+      let callsignTotals = {};
+      filteredData.forEach(r => {
+        let speed = parseFloat(r["speed"] || r["Speed"] || "0");
+        if (isNaN(speed) || speed > 1) return;
+        let dataval = (r.data || r.Data || "").trim();
+        if (!dataval.startsWith("Cell status:")) return;
+        let cs = r.callsign || r.Callsign || "Unknown";
+        if(currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return;
+        let status0 = dataval === "Cell status: 0" ? 1 : 0;
+        let status1 = dataval === "Cell status: 1" ? 1 : 0;
+        if(!callsignTotals[cs]) callsignTotals[cs] = {count0:0, count1:0};
+        callsignTotals[cs].count0 += status0;
+        callsignTotals[cs].count1 += status1;
+      });
+      let callsignKeys = Object.keys(callsignTotals);
+      let modeCS = document.getElementById('callsignSort').value;
+      callsignKeys = sortAgg(callsignKeys, callsignTotals, modeCS);
+      let callsignCounts0 = callsignKeys.map(c=>callsignTotals[c].count0);
+      let callsignCounts1 = callsignKeys.map(c=>callsignTotals[c].count1);
+      if (callsignChart) callsignChart.destroy();
+      callsignChart = new Chart(document.getElementById('callsignChart'), {
+        type: 'bar',
+        data: {
+          labels: callsignKeys,
+          datasets: [
+            {label: status0Label, data: callsignCounts0, backgroundColor: '#e83a3a'},
+            {label: status1Label, data: callsignCounts1, backgroundColor: '#1bc541'}
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {legend: {position:'top'}},
+          scales: {x: {stacked:true}, y:{beginAtZero:true,stacked:true}}
+        }
+      });
+
+      // Zoom map to markers
+      let allLatLngs = Object.values(geonameGroup).map(val => [val.lat, val.lon]);
+      if (allLatLngs.length > 0) {
+        let bounds = L.latLngBounds(allLatLngs);
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+
+      // New chart 1: Daily No Cell %
+// New chart 1: Daily No Cell %
+let byDay = {};
+  filteredData.forEach(row=>{
+    let speed = parseFloat(row["speed"] || row["Speed"] || "0");
+    if (isNaN(speed) || speed > 1) return;
+    let dataval = (row.data || row.Data || "").trim();
+    if (!dataval.startsWith("Cell status:")) return;
+    let cs = row.callsign || row.Callsign || "Unknown";
+    if (currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return;
+    let dateStr = (row.PosnDate || row.posndate || "").slice(0,10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+    if (!byDay[dateStr]) byDay[dateStr] = {count0:0, count1:0};
+    if (dataval === "Cell status: 0") byDay[dateStr].count0++;
+    else if (dataval === "Cell status: 1") byDay[dateStr].count1++;
+  });
+  let dayKeys = Object.keys(byDay).sort(); // chronological
+  let dayPct = dayKeys.map(d=>{
+    let o = byDay[d], t = o.count0 + o.count1;
+    return t ? Math.round((o.count0/t)*1000)/10 : 0; // one decimal
+  });
+
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  const endStr = (document.getElementById('endDate').value || '').slice(0,10);
+  if (endStr === todayStr && dayKeys.length && dayKeys[dayKeys.length - 1] === todayStr) {
+    dayKeys.pop();
+    dayPct.pop();
+  }
+
+
+  if (dailyPctChart) dailyPctChart.destroy();
+  dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
+    type: 'line',
+    data: { labels: dayKeys, datasets: [{ label: '% No Cell', data: dayPct, tension: 0.3 }]},
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
+    }
+  });
+
+      if (dailyPctChart) dailyPctChart.destroy();
+      dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
+        type: 'line',
+        data: { labels: dayKeys, datasets: [{ label: '% No Cell', data: dayPct, tension: 0.3 }]},
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
+        }
+      });
+
+      // New chart 2: Top 10 Callsigns by No Cell % (min 5 events)
+      let csPctArr = callsignKeys.map(k=>{
+        let o = callsignTotals[k]; let t = o.count0 + o.count1;
+        let pct = t ? o.count0/t : 0;
+        return {k, pct, t};
+      }).filter(x=>x.t >= 5).sort((a,b)=> b.pct - a.pct).slice(0,10);
+      if (callsignPctChart) callsignPctChart.destroy();
+      callsignPctChart = new Chart(document.getElementById('callsignPctChart'), {
+        type: 'bar',
+        data: {
+          labels: csPctArr.map(x=>x.k),
+          datasets: [{ label: '% No Cell', data: csPctArr.map(x=> Math.round(x.pct*1000)/10) }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
+        }
+      });
+    }
+
+    function filterByDate(data, start, end) {
+      return data.filter(row => {
+        let posnDate = row.PosnDate || row.posndate || "";
+        if (!posnDate) return false;
+        let dateMatch = posnDate.match(/(\d{4})[-\/.](\d{2})[-\/.](\d{2})/) || posnDate.match(/(\d{2})[-\/.](\d{2})[-\/.](\d{4})/);
+        let thisDate;
+        if (dateMatch) {
+          if (dateMatch[1].length === 4)
+            thisDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+          else
+            thisDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+        } else {
+          thisDate = posnDate.slice(0,10);
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(thisDate)) return false;
+        if (start && thisDate < start) return false;
+        if (end && thisDate > end) return false;
+        return true;
+      });
+    }
+
+    function updateCallsignDropdown(allData) {
+      let callsignCol = Object.keys(allData[0]).find(k=>k.toLowerCase().includes('callsign')) || 'callsign';
+      const allowed = new Set(STARS_REGISTRATIONS);
+      let callsigns = Array.from(new Set(allData.map(row=>row[callsignCol]||'Unknown')))
+        .filter(v => v && v !== 'Unknown')
+        .filter(v => allowed.size === 0 || allowed.has(v.toString().trim().toUpperCase()))
+        .sort();
+      if (callsigns.length === 0) callsigns = STARS_REGISTRATIONS.slice();
+      const menu = document.getElementById('callsignMenu');
+      menu.innerHTML = `
+        <label><input type="checkbox" value="__ALL__" checked> <b>All Callsigns</b></label>
+        ${callsigns.map(cs =>
+          `<label><input type="checkbox" value="${cs.replace(/"/g, '&quot;')}"> ${cs}</label>`
+        ).join('')}
+      `;
+      menu.querySelectorAll('input[type=checkbox]').forEach(chk => {
+        chk.addEventListener('change',function(e){
+            onCallsignFilterChange(e)
+            doRedraw();
+            }); 
+      });
+    }
+    function onCallsignFilterChange(e) {
+      const menu = document.getElementById('callsignMenu');
+      let allBoxes = Array.from(menu.querySelectorAll('input[type=checkbox]'));
+      let allBox = menu.querySelector('input[value="__ALL__"]');
+      let checked = allBoxes.filter(b => b.checked).map(b=>b.value);
+
+      if(e.target.value === "__ALL__") {
+        if (e.target.checked) {
+          allBoxes.forEach(b => b.checked = (b.value === "__ALL__"));
+          currentCallsigns = ["__ALL__"];
+        } else {
+          allBox.checked = true;
+          currentCallsigns = ["__ALL__"];
+        }
+      } else {
+        allBox.checked = false;
+        let checkedSpecific = allBoxes.filter(b => b.value !== "__ALL__" && b.checked);
+        if (checkedSpecific.length === 0) {
+          allBox.checked = true;
+          currentCallsigns = ["__ALL__"];
+        } else {
+          currentCallsigns = checkedSpecific.map(b => b.value);
+        }
+      }
+      let btn = document.getElementById('callsignBtn');
+      if(currentCallsigns[0] === "__ALL__" || currentCallsigns.length === 0) btn.textContent = "All Callsigns ▼";
+      else if(currentCallsigns.length === 1) btn.textContent = currentCallsigns[0] + " ▼";
+      else btn.textContent = currentCallsigns.length + " selected ▼";
+      gtag('event', 'callsign_filter', {
+        selection: currentCallsigns[0] === '__ALL__' ? 'ALL' : currentCallsigns.join(',')
+      });
+      doRedraw();
+    }
+    function filterByEquip(data) {
+      return data.filter(row => {
+        const cs = getCallsignVal(row);
+
+        // SIM filter
+        if (selectedSIMFilter === "TELUS" && !TELUS_CALLSIGNS.has(cs)) return false;
+        if (selectedSIMFilter === "GIGSKY" && TELUS_CALLSIGNS.has(cs)) return false;
+
+        // Mod filter
+        const isModE = MOD_E_CALLSIGNS.has(cs);
+        if (selectedModFilter === "MOD_E" && !isModE) return false;
+        if (selectedModFilter === "NON_MOD" && isModE) return false;
+
+        // Location filter
+        let geo = canonicalGeoname(row.geoname || row.Geoname || "Unknown");
+        if (currentLocations.length > 0 && !currentLocations.includes(geo)) return false;
+
+        // Callsign multiselect (existing logic)
+        if (currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return false;
+
+        return true;
+      });
+    }
+    function updateLocationDropdown(allData) {
+      let locs = Array.from(new Set(
+        allData.map(r => canonicalGeoname(r.geoname || r.Geoname || "Unknown"))
+      )).filter(v => v && v !== "Unknown").sort();
+
+      // These are the ones to *not* check by default
+      const defaultDeselected = new Set(["Nain", "Schefferville", "Iqaluit"]);
+
+      const menu = document.getElementById('locationMenu');
+      menu.innerHTML = locs.map(l =>
+        `<label><input type="checkbox" value="${l.replace(/"/g, '&quot;')}" ${defaultDeselected.has(l) ? "" : "checked"}> ${l}</label>`
+      ).join('');
+
+      // Track selections (exclude deselected ones by default)
+      currentLocations = locs.filter(l => !defaultDeselected.has(l));
+
+      menu.querySelectorAll('input[type=checkbox]').forEach(chk => {
+        chk.addEventListener('change', onLocationFilterChange);
+      });
+
+      // Set button label
+      document.getElementById('locationBtn').textContent = 
+        currentLocations.length === locs.length ? "All Locations ▼" : currentLocations.length + " selected ▼";
+    }
+    
+    function doRedraw() {
+      let start = document.getElementById('startDate').value;
+      let end   = document.getElementById('endDate').value;
+      let dateFiltered = filterByDate(allData, start, end);
+      let equipFiltered = filterByEquip(dateFiltered);   // NEW
+      redraw(equipFiltered);
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const btn = document.getElementById('callsignBtn');
+      const menu = document.getElementById('callsignMenu');
+      if (btn) btn.setAttribute('title', PALANTIR_DEVICE.registrationMappingNote);
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+        menu.style.opacity = (menu.style.display === 'block') ? '1' : '0';
+      });
+      document.addEventListener('click', (e)=>{
+        if(menu.style.display === 'block') {
+          menu.style.display = 'none'; menu.style.opacity = '0';
+          doRedraw();
+        }
+      });
+      menu.addEventListener('click', e=>e.stopPropagation());
+      document.getElementById('includeNetFix').addEventListener('change', function(e){
+        includeNetFix = this.checked;
+        gtag('event', 'filter_change', {
+          filter: 'includeNetFix',
+          value: includeNetFix ? 'on' : 'off'
+        });
+        doRedraw();
+      });
+      // Sort controls
+      document.getElementById('geonameSort').addEventListener('change', function(){
+        gtag('event', 'sort_change', { chart: 'city', mode: this.value });
+        doRedraw();
+      });
+      document.getElementById('callsignSort').addEventListener('change', function(){
+        gtag('event', 'sort_change', { chart: 'callsign', mode: this.value });
+        doRedraw();
+      });
+      document.getElementById('modFilter').addEventListener('change', function () {
+        selectedModFilter = this.value; 
+        doRedraw();
+      });
+      document.getElementById('simFilter').addEventListener('change', function () {
+        selectedSIMFilter = this.value; 
+        doRedraw();
+      });
+    });
+    function onLocationFilterChange() {
+      const menu = document.getElementById('locationMenu');
+      let checked = Array.from(menu.querySelectorAll('input[type=checkbox]'))
+                        .filter(b => b.checked)
+                        .map(b => b.value);
+
+      currentLocations = checked;
+
+      let btn = document.getElementById('locationBtn');
+      if (currentLocations.length === 0) {
+        btn.textContent = "No Locations ▼";
+      } else if (currentLocations.length === 1) {
+        btn.textContent = currentLocations[0] + " ▼";
+      } else if (currentLocations.length === menu.querySelectorAll('input[type=checkbox]').length) {
+        btn.textContent = "All Locations ▼";
+      } else {
+        btn.textContent = currentLocations.length + " selected ▼";
+      }
+
+      doRedraw();
+    }
+
+
+    const locBtn = document.getElementById('locationBtn');
+    const locMenu = document.getElementById('locationMenu');
+    locBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      locMenu.style.display = (locMenu.style.display === 'block') ? 'none' : 'block';
+      locMenu.style.opacity = (locMenu.style.display === 'block') ? '1' : '0';
+    });
+    document.addEventListener('click', ()=>{
+      if(locMenu.style.display === 'block') {
+        locMenu.style.display = 'none'; locMenu.style.opacity = '0';
+        doRedraw();
+      }
+    });
+    locMenu.addEventListener('click', e=>e.stopPropagation());
+
+
+    fetch('data/master_results.csv')
+      .then(resp => resp.text())
+      .then(csv => {
+        allData = parseCSV(csv);
+        let allDates = allData
+        
+        .map(row => {
+            let val = row.PosnDate || row.posndate || "";
+            let m = val.match(/(\d{4}-\d{2}-\d{2})/);
+            return m ? m[1] : null;
+        })
+        .filter(Boolean);
+        updateLocationDropdown(allData);
+        let minDate = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : '';
+        let maxDate = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : '';
+
+        // Default to October 15th of current year through the latest available date if possible
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const oct15 = `${yyyy}-10-15`;
+        let defaultStart = (allDates.some(d => d >= oct15)) ? oct15 : (minDate || oct15);
+        let defaultEnd = maxDate || oct15;
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(defaultStart)) document.getElementById('startDate').value = defaultStart;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(defaultEnd)) document.getElementById('endDate').value = defaultEnd;
+
+        updateCallsignDropdown(allData);
+        doRedraw();
+
+        document.getElementById('startDate').addEventListener('change', doRedraw);
+        document.getElementById('endDate').addEventListener('change', doRedraw);
+        document.getElementById('resetDates').addEventListener('click', ()=>{
+          document.getElementById('startDate').value = minDate || defaultStart;
+          document.getElementById('endDate').value = maxDate || defaultEnd;
+          doRedraw();
+        });
+      });
+
+    map = L.map('map').setView([54, -100], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 12}).addTo(map);
+  </script>
+</body>
+</html>

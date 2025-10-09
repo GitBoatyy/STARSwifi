@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+    <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-L9R9EKK20K"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-L9R9EKK20K');
+  </script>
+  <title>STARSwifi Map View</title>
+  <!-- Leaflet CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #fafbfc;}
+    #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
+    #navbar a {
+      color: #fff; text-decoration: none; margin-right: 18px; font-weight: 600; font-size: 1.1em; padding: 6px 12px;
+      border-radius: 6px; transition: background 0.2s;
+    }
+    #navbar a:hover, #navbar a.active { background: #2362a1; }
+    #container { max-width: 1080px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
+    h1 { font-weight: 700; }
+    #map { width: 100%; height: 600px; border-radius: 12px; border: 1px solid #ddd; margin: 0 auto;}
+    #filters { margin-bottom: 18px; display: flex; gap: 28px; align-items: center; }
+    #registrationSelect { font-size: 1.05em; padding: 4px 12px; }
+  </style>
+</head>
+<body>
+  <nav id="navbar">
+    <a href="index.html">Dashboard</a>
+    <a href="map.html" class="active">Wifi Map</a>
+    <a href="visualizer.html">Cell Map</a>
+    <a href="rawdata.html">Raw Data</a>
+  </nav>
+  <div id="container">
+    <h1>STARSwifi Logger Map</h1>
+    <div id="filters">
+      <label for="registrationSelect">Registration:</label>
+      <select id="registrationSelect"></select>
+      <label><input type="checkbox" id="onGroundChk" checked> On Ground (DIN2=1)</label>
+      <label><input type="checkbox" id="altChk"> Alt &lt; 2000 ft</label>
+    </div>
+    <div id="map"></div>
+  </div>
+  <script>
+    let allPoints = [];
+    let markersLayer = L.layerGroup();
+    let map = L.map('map').setView([54, -100], 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    markersLayer.addTo(map);
+
+    // Load all data and setup dropdown
+    const STARS_REGISTRATIONS = [
+      'GCPH','FKCM','FCLI','GLLS','GKLY','FMBQ','GFRG','FNPT','GWRC','GDRP','FIFP','FLNK'
+    ];
+
+    const PALANTIR_DEVICE_SOURCE = {
+      mapJson: 'data/Palantir_device_map.json', // Placeholder; replace when new device export is available
+      ssid: 'SKYTRAC_DAL-200',
+      registrationMappingNote: 'Awaiting registration mapping for SKYTRAC_DAL-200 device'
+    };
+
+    fetch(PALANTIR_DEVICE_SOURCE.mapJson)
+      .then(resp => resp.json())
+      .then(points => {
+        allPoints = Array.isArray(points) ? points : [];
+        updateRegistrationDropdown();
+        plotFiltered();
+      });
+
+    function updateRegistrationDropdown() {
+      const allowedRegistrations = new Set(STARS_REGISTRATIONS);
+      let regs = Array.from(new Set(allPoints.map(p => p.Registration || '').filter(Boolean)))
+        .filter(r => allowedRegistrations.size === 0 || allowedRegistrations.has(r))
+        .sort();
+      if (regs.length === 0) regs = STARS_REGISTRATIONS.slice();
+      let select = document.getElementById('registrationSelect');
+      select.innerHTML = regs.map(reg => `<option value="${reg}">${reg}</option>`).join('');
+      select.title = PALANTIR_DEVICE_SOURCE.registrationMappingNote;
+      // Optional: auto-select first registration
+      if (regs.length > 0) select.value = regs[0];
+    }
+
+    function plotFiltered() {
+      markersLayer.clearLayers();
+      let registration = document.getElementById('registrationSelect').value;
+      let onGround = document.getElementById('onGroundChk').checked;
+      let altLimit = document.getElementById('altChk').checked;
+
+      let latlngs = [];
+      let reds = [], greens = [];
+
+      allPoints.forEach(p => {
+        if (p.SSID && p.SSID !== PALANTIR_DEVICE_SOURCE.ssid) return;
+        if ((registration && p.Registration !== registration)) return;
+        if (onGround && Number(p.DIN2) !== 1) return;
+        if (altLimit && Number(p.Alt || p.ALT || p.alt) >= 2000) return;
+
+        let lat = parseFloat(p.Latitude || p.Lat || p.lat);
+        let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
+        if (isNaN(lat) || isNaN(lon)) return;
+        latlngs.push([lat, lon]);
+        let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
+        let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
+        let color = (wifi && inet) ? "green" : "red";
+        let popup = `
+          <b>Registration:</b> ${p.Registration || ''}<br>
+          Time: ${p.Date || ''} ${p.Time || ''}<br>
+          SSID: ${p.SSID || ''}<br>
+          Wifi: ${wifi ? "Yes" : "No"}<br>
+          Internet: ${inet ? "Yes" : "No"}<br>
+          Lat: ${lat}<br>
+          Lon: ${lon}
+        `;
+        let markerData = { lat, lon, color, popup };
+        if (color === "green") greens.push(markerData);
+        else reds.push(markerData);
+      });
+
+      reds.forEach(({ lat, lon, popup }) => {
+        let marker = L.circleMarker([lat, lon], {
+          radius: 3,
+          fillColor: "red",
+          color: "none",
+          weight: 0,
+          fillOpacity: 0.8
+        }).addTo(markersLayer);
+        marker.bindPopup(popup);
+      });
+      greens.forEach(({ lat, lon, popup }) => {
+        let marker = L.circleMarker([lat, lon], {
+          radius: 6,
+          fillColor: "green",
+          color: "none",
+          weight: 0,
+          fillOpacity: 0.8
+        }).addTo(markersLayer);
+        marker.bindPopup(popup);
+      });
+
+      // Zoom to fit all markers if any
+      if (latlngs.length > 1) {
+        map.fitBounds(latlngs, { padding: [28, 28] });
+      } else if (latlngs.length === 1) {
+        map.setView(latlngs[0], 11);
+      }
+    }
+
+    document.getElementById('registrationSelect').addEventListener('change', plotFiltered);
+    document.getElementById('onGroundChk').addEventListener('change', plotFiltered);
+    document.getElementById('altChk').addEventListener('change', plotFiltered);
+
+  </script>
+</body>
+</html>
